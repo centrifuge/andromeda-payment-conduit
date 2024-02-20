@@ -29,4 +29,16 @@ contract MockLiquidityPool is Mock {
     function maxDeposit(address /* owner */ ) public view returns (uint256 maxAssets) {
         maxAssets = values_uint256_return["maxDeposit"];
     }
+
+    function requestRedeem(uint256 shares, address receiver, address owner, bytes memory data)
+        public
+        returns (uint256)
+    {
+        values_uint256["requestRedeem_shares"] = shares;
+        values_address["requestRedeem_receiver"] = receiver;
+        values_address["requestRedeem_owner"] = owner;
+        values_bytes["requestRedeem_data"] = data;
+
+        return 0;
+    }
 }

@@ -7,7 +7,6 @@ interface ERC20Like {
     function balanceOf(address user) external returns (uint256 amount);
     function mint(address user, uint256 amount) external;
     function burn(address user, uint256 amount) external;
-    function approve(address user, uint256 amount) external;
 }
 
 interface OutputConduitLike {
@@ -65,7 +64,7 @@ contract Conduit {
     // Centrifuge pool
     ERC7540Like pool;
     PoolManagerLike poolManager;
-    bytes32 claimRecipient;
+    bytes32 depositRecipient;
 
     mapping(address => uint256) public wards;
     mapping(address => uint256) public can;
@@ -172,8 +171,8 @@ contract Conduit {
     }
 
     function file(bytes32 what, bytes32 data) external onlyOperator {
-        if (what == "claimRecipient") {
-            claimRecipient = data;
+        if (what == "depositRecipient") {
+            depositRecipient = data;
         } else {
             revert("AndromedaPaymentConduit/unrecognised-param");
         }
@@ -184,7 +183,7 @@ contract Conduit {
     /// -- Invest --
     /// @notice Submit investment request for LTF tokens
     function requestDeposit() public onlyMate {
-        // Get USDC from outputConduit
+        // Get gem from outputConduit
         outputConduit.pick(address(this));
         outputConduit.hook(psm);
         outputConduit.push();
@@ -192,7 +191,7 @@ contract Conduit {
         // Mint deposit tokens
         uint256 amount = gem.balanceOf(address(this));
         depositAsset.mint(address(this), amount);
-        depositAsset.approve(address(pool), amount);
+
         // Deposit in pool
         pool.requestDeposit(amount, address(this), address(this), "");
     }
@@ -223,9 +222,11 @@ contract Conduit {
 
     /// @notice Lock deposit tokens in pool
     function depositIntoPool() public onlyMate {
+        require(depositRecipient != "", "AndromedaPaymentConduit/deposit-recipient-is-zero");
+
         uint256 amount = gem.balanceOf(address(this));
         depositAsset.mint(address(this), amount);
-        poolManager.transfer(address(depositAsset), claimRecipient, _toUint128(amount));
+        poolManager.transfer(address(depositAsset), depositRecipient, _toUint128(amount));
     }
 
     /// @notice Claim and burn redeemed deposit tokens
