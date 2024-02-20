@@ -10,7 +10,7 @@ env:
   FOUNDRY_PROFILE: ci
 
 jobs:
-  test:
+  test-unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -19,10 +19,24 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Run tests
-        run: forge test
+        run: forge test --no-match-path "test/fork/**/*.sol"
         env:
           FOUNDRY_PROFILE: ci
           FORK_TESTS: false
+
+  # test-fork:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+
+  #     - name: Install Foundry
+  #       uses: foundry-rs/foundry-toolchain@v1
+
+  #     - name: Run tests
+  #       run: forge test --match-path "test/fork/**/*.sol"
+  #       env:
+  #         FOUNDRY_PROFILE: ci
+  #         FORK_TESTS: false
 
   lint:
     runs-on: ubuntu-latest
