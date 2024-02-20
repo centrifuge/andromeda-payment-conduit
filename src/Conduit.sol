@@ -209,7 +209,6 @@ contract Conduit {
         uint256 amount = depositAsset.balanceOf(address(this));
         depositAsset.burn(address(this), amount);
 
-        claimDeposit();
         gem.transferFrom(address(this), withdrawal, amount);
     }
 

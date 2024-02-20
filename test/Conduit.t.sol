@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {MockInputConduit} from "test/mocks/MockInputConduit.sol";
 import {MockOutputConduit} from "test/mocks/MockOutputConduit.sol";
 import {MockLiquidityPool} from "test/mocks/MockLiquidityPool.sol";
+import {MockBrokenLiquidityPool} from "test/mocks/MockBrokenLiquidityPool.sol";
 import {MockPoolManager} from "test/mocks/MockPoolManager.sol";
 import {Conduit} from "src/Conduit.sol";
 import {ERC20} from "src/token/ERC20.sol";
@@ -12,6 +13,8 @@ import {ERC20} from "src/token/ERC20.sol";
 contract ConduitTest is Test {
 
     address psm = makeAddr("PSM");
+    address urn = makeAddr("Urn");
+    address jar = makeAddr("Jar");
 
     ERC20 dai;
     ERC20 gem;
@@ -22,6 +25,8 @@ contract ConduitTest is Test {
     MockInputConduit jarConduit;
 
     address operator;
+    address withdrawal = makeAddr("Withdrawal");
+
     bytes32 depositRecipient;
     MockLiquidityPool pool;
     MockPoolManager poolManager;
@@ -35,8 +40,8 @@ contract ConduitTest is Test {
         depositAsset = new ERC20("Andromeda USDC Deposit", "andrUSDC", 6);
 
         outputConduit = new MockOutputConduit(address(gem));
-        urnConduit = new MockInputConduit(address(gem));
-        jarConduit = new MockInputConduit(address(gem));
+        urnConduit = new MockInputConduit(address(gem), address(urn));
+        jarConduit = new MockInputConduit(address(gem), address(jar));
 
         gem.rely(address(outputConduit));
 
@@ -107,9 +112,8 @@ contract ConduitTest is Test {
         assertEq(pool.values_address("deposit_receiver"), address(conduit));
     }
 
-    function testWithdrawFromPool(address notMate, address withdrawal, uint256 gemAmount) public {
+    function testWithdrawFromPool(address notMate, uint256 gemAmount) public {
         vm.assume(mate != notMate);
-        vm.assume(withdrawal != address(0));
 
         outputConduit.setPush(gemAmount);
         pool.setReturn("maxDeposit", gemAmount);
@@ -197,5 +201,43 @@ contract ConduitTest is Test {
         assertEq(poolManager.values_address("transfer_currency"), address(depositAsset));
         assertEq(poolManager.values_bytes32("transfer_recipient"), depositRecipient);
         assertEq(poolManager.values_uint128("transfer_amount"), uint128(gemAmount));
+    }
+
+    function testClaimRedeem() public {
+        // todo
+    }
+
+    function testRepay() public {
+        // todo
+    }
+
+    function testRepayBrokenLiquidityPool(uint256 jarRepayAmount, uint256 urnRepayAmount) public {
+        jarRepayAmount = bound(jarRepayAmount, 0, type(uint128).max);
+        urnRepayAmount = bound(urnRepayAmount, 0, type(uint128).max);
+
+        conduit.file("withdrawal", withdrawal);
+
+        // Liquidity Pool is broken (always reverting)
+        MockBrokenLiquidityPool brokenPool = new MockBrokenLiquidityPool();
+        vm.prank(operator);
+        conduit.file("pool", address(brokenPool), address(poolManager));
+
+        // On-ramp to exchange agent
+        gem.mint(address(withdrawal), jarRepayAmount + urnRepayAmount);
+
+        // Send to conduit
+        vm.prank(withdrawal);
+        gem.transfer(address(conduit), jarRepayAmount + urnRepayAmount);
+
+        assertEq(gem.balanceOf(address(jar)), 0);
+        assertEq(gem.balanceOf(address(urn)), 0);
+
+        // Repay to jar & urn
+        vm.startPrank(mate);
+        conduit.repayToJar(jarRepayAmount);
+        conduit.repayToUrn(urnRepayAmount);
+
+        assertEq(gem.balanceOf(address(jar)), jarRepayAmount);
+        assertEq(gem.balanceOf(address(urn)), urnRepayAmount);
     }
 }
