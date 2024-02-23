@@ -203,8 +203,27 @@ contract ConduitTest is Test {
         assertEq(poolManager.values_uint128("transfer_amount"), uint128(gemAmount));
     }
 
-    function testClaimRedeem() public {
-        // todo
+    function testClaimRedeem(address notMate, uint256 gemAmount, uint256 shareAmount) public {
+        vm.assume(mate != notMate);
+
+        pool.setReturn("redeem", gemAmount);
+        pool.setReturn("maxRedeem", shareAmount);
+        depositAsset.mint(address(conduit), gemAmount);
+        
+        vm.expectRevert(bytes("AndromedaPaymentConduit/not-mate"));
+        vm.prank(notMate);
+        conduit.claimRedeem();
+        
+        assertEq(depositAsset.balanceOf(address(conduit)), gemAmount);
+
+        vm.startPrank(mate);
+        conduit.claimRedeem();
+
+        assertEq(depositAsset.balanceOf(address(conduit)), 0);
+
+        assertEq(pool.values_uint256("redeem_shares"), shareAmount);
+        assertEq(pool.values_address("redeem_receiver"), address(conduit));
+        assertEq(pool.values_address("redeem_owner"), address(conduit));
     }
 
     function testRepay() public {

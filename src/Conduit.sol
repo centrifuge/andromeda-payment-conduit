@@ -230,10 +230,10 @@ contract Conduit {
 
     /// @notice Claim and burn redeemed deposit tokens
     function claimRedeem() public onlyMate {
-        uint256 claimable = pool.maxRedeem(address(this));
-        pool.redeem(claimable, address(this), address(this));
+        uint256 claimableShares = pool.maxRedeem(address(this));
+        uint256 redeemedAssets = pool.redeem(claimableShares, address(this), address(this));
 
-        depositAsset.burn(address(this), claimable);
+        depositAsset.burn(address(this), redeemedAssets);
     }
 
     /// @notice Send gem as interest to jar
