@@ -15,6 +15,15 @@ contract ERC20Test is Test {
         token = new ERC20("Name", "SYMBOL", 18);
     }
 
+    function testPermissions(address anotherWard) public {
+        vm.assume(anotherWard != address(this));
+
+        token.rely(anotherWard);
+        assertEq(token.wards(anotherWard), 1);
+        token.deny(anotherWard);
+        assertEq(token.wards(anotherWard), 0);
+    }
+
     function testMint() public {
         vm.expectEmit(true, true, true, true);
         emit Transfer(address(0), address(0xBEEF), 1e18);
