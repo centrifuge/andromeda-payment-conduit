@@ -62,9 +62,9 @@ contract Conduit {
     address public withdrawal;
 
     // Centrifuge pool
-    ERC7540Like pool;
-    PoolManagerLike poolManager;
-    bytes32 depositRecipient;
+    ERC7540Like public pool;
+    PoolManagerLike public poolManager;
+    bytes32 public depositRecipient;
 
     mapping(address => uint256) public wards;
     mapping(address => uint256) public can;

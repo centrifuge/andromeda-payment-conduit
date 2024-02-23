@@ -85,6 +85,30 @@ contract ConduitTest is Test {
         assertEq(conduit.wards(anotherWard), 0);
     }
 
+    function testFile(address anotherWithdrawal, address anotherPool, address anotherPoolManager, bytes32 anotherDepositRecipient) public {
+        vm.expectRevert(bytes("AndromedaPaymentConduit/unrecognised-param"));
+        conduit.file("withdrawal2", anotherWithdrawal);
+
+        conduit.file("withdrawal", anotherWithdrawal);
+        assertEq(conduit.withdrawal(), anotherWithdrawal);
+
+        vm.startPrank(operator);
+
+        vm.expectRevert(bytes("AndromedaPaymentConduit/unrecognised-param"));
+        conduit.file("pool2", anotherPool, anotherPoolManager);
+
+        conduit.file("pool", anotherPool, anotherPoolManager);
+        assertEq(address(conduit.pool()), anotherPool);
+        assertEq(address(conduit.poolManager()), anotherPoolManager);
+
+        vm.expectRevert(bytes("AndromedaPaymentConduit/unrecognised-param"));
+        conduit.file("depositRecipient2", anotherDepositRecipient);
+
+        conduit.file("depositRecipient", anotherDepositRecipient);
+        assertEq(conduit.depositRecipient(), anotherDepositRecipient);
+
+    }
+
     function testWardSetup(address notDeployer) public {
         vm.assume(address(this) != notDeployer);
 
