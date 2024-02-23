@@ -246,6 +246,20 @@ contract ConduitTest is Test {
         assertEq(poolManager.values_uint128("transfer_amount"), uint128(gemAmount));
     }
 
+    function testDepositIntoPoolOverflow(uint256 gemAmount) public {
+        vm.assume(gemAmount > type(uint128).max);
+
+        vm.startPrank(operator);
+        conduit.file("depositRecipient", depositRecipient);
+        vm.stopPrank();
+
+        gem.mint(address(conduit), gemAmount);
+        
+        vm.startPrank(mate);
+        vm.expectRevert(bytes("AndromedaPaymentConduit/uint128-overflow"));
+        conduit.depositIntoPool();
+    }
+
     function testClaimRedeem(address notMate, uint256 gemAmount, uint256 shareAmount) public {
         vm.assume(mate != notMate);
 
@@ -301,5 +315,40 @@ contract ConduitTest is Test {
 
         assertEq(gem.balanceOf(address(jar)), jarRepayAmount);
         assertEq(gem.balanceOf(address(urn)), urnRepayAmount);
+    }
+
+    function testAuthMint(address notMate, uint256 amount) public {
+        vm.assume(mate != notMate);
+
+        vm.expectRevert(bytes("AndromedaPaymentConduit/not-mate"));
+        vm.prank(notMate);
+        conduit.authMint(amount);
+        
+        assertEq(depositAsset.balanceOf(address(conduit)), 0);
+
+        vm.startPrank(mate);
+        conduit.authMint(amount);
+
+        assertEq(depositAsset.balanceOf(address(conduit)), amount);
+    }
+
+    function testAuthBurn(address notMate, uint256 mintAmount, uint256 burnAmount) public {
+        vm.assume(mate != notMate);
+        burnAmount = bound(burnAmount, 0, mintAmount);
+
+        vm.startPrank(mate);
+        conduit.authMint(mintAmount);
+        vm.stopPrank();
+
+        vm.expectRevert(bytes("AndromedaPaymentConduit/not-mate"));
+        vm.prank(notMate);
+        conduit.authBurn(burnAmount);
+        
+        assertEq(depositAsset.balanceOf(address(conduit)), mintAmount);
+
+        vm.startPrank(mate);
+        conduit.authBurn(burnAmount);
+
+        assertEq(depositAsset.balanceOf(address(conduit)), mintAmount - burnAmount);
     }
 }

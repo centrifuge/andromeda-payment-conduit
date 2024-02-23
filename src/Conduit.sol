@@ -260,7 +260,7 @@ contract Conduit {
     /// -- Helpers --
     function _toUint128(uint256 _value) internal pure returns (uint128 value) {
         if (_value > type(uint128).max) {
-            revert("MathLib/uint128-overflow");
+            revert("AndromedaPaymentConduit/uint128-overflow");
         } else {
             value = uint128(_value);
         }
