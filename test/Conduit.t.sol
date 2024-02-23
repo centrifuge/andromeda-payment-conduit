@@ -66,6 +66,25 @@ contract ConduitTest is Test {
         vm.label(address(conduit), "Conduit");
     }
 
+    function testPermissions(address anotherWard) public {
+        vm.assume(anotherWard != address(this));
+
+        conduit.nope(operator);
+        assertEq(conduit.can(operator), 0);
+        conduit.hope(operator);
+        assertEq(conduit.can(operator), 1);
+
+        conduit.hate(mate);
+        assertEq(conduit.may(mate), 0);
+        conduit.mate(mate);
+        assertEq(conduit.may(mate), 1);
+
+        conduit.rely(anotherWard);
+        assertEq(conduit.wards(anotherWard), 1);
+        conduit.deny(anotherWard);
+        assertEq(conduit.wards(anotherWard), 0);
+    }
+
     function testWardSetup(address notDeployer) public {
         vm.assume(address(this) != notDeployer);
 
