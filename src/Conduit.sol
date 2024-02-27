@@ -4,6 +4,7 @@ pragma solidity 0.8.21;
 interface ERC20Like {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function transfer(address to, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 value) external returns (bool);
     function balanceOf(address user) external returns (uint256 amount);
     function mint(address user, uint256 amount) external;
     function burn(address user, uint256 amount) external;
@@ -36,7 +37,6 @@ interface PoolManagerLike {
     function transfer(address currency, bytes32 recipient, uint128 amount) external;
 }
 
-// https://forum.makerdao.com/t/rwa015-project-andromeda-technical-assessment/20974#drawing-dai-swapping-for-stablecoin-and-investing-into-bonds-13
 contract Conduit {
     address public immutable psm;
     ERC20Like public immutable dai;
@@ -193,6 +193,7 @@ contract Conduit {
         depositAsset.mint(address(this), amount);
 
         // Deposit in pool
+        depositAsset.approve(address(pool), amount);
         pool.requestDeposit(amount, address(this), address(this), "");
     }
 

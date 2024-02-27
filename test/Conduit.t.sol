@@ -135,6 +135,7 @@ contract ConduitTest is Test {
         assertEq(gem.balanceOf(address(outputConduit)), 0);
         assertEq(gem.balanceOf(address(conduit)), gemAmount);
         assertEq(depositAsset.balanceOf(address(conduit)), gemAmount);
+        assertEq(depositAsset.allowance(address(conduit), address(pool)), gemAmount);
 
         assertEq(pool.values_uint256("requestDeposit_assets"), gemAmount);
         assertEq(pool.values_address("requestDeposit_receiver"), address(conduit));
