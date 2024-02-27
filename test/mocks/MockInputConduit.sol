@@ -12,13 +12,15 @@ interface ERC20Like {
 
 contract MockInputConduit is Mock {
     ERC20Like gem;
+    address to;
 
-    constructor(address gem_) {
+    constructor(address gem_, address to_) {
         gem = ERC20Like(gem_);
+        to = to_;
     }
 
     function push() public {
-        gem.transfer(msg.sender, gem.balanceOf(address(this)));
+        gem.transfer(to, gem.balanceOf(address(this)));
     }
 
     function setPush(uint256 amount) public {

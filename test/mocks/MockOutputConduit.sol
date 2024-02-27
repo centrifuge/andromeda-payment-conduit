@@ -21,11 +21,13 @@ contract MockOutputConduit is Mock {
         gem.transfer(msg.sender, gem.balanceOf(address(this)));
     }
 
-    function hook(address psm) public pure {
+    function hook(address psm) public {
+        values_address["hook_psm"] = psm;
         return;
     }
 
-    function pick(address who) public pure {
+    function pick(address who) public {
+        values_address["pick_who"] = who;
         return;
     }
 

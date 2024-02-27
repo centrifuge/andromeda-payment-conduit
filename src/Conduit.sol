@@ -4,10 +4,10 @@ pragma solidity 0.8.21;
 interface ERC20Like {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function transfer(address to, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 value) external returns (bool);
     function balanceOf(address user) external returns (uint256 amount);
     function mint(address user, uint256 amount) external;
     function burn(address user, uint256 amount) external;
-    function approve(address user, uint256 amount) external;
 }
 
 interface OutputConduitLike {
@@ -37,7 +37,6 @@ interface PoolManagerLike {
     function transfer(address currency, bytes32 recipient, uint128 amount) external;
 }
 
-// https://forum.makerdao.com/t/rwa015-project-andromeda-technical-assessment/20974#drawing-dai-swapping-for-stablecoin-and-investing-into-bonds-13
 contract Conduit {
     address public immutable psm;
     ERC20Like public immutable dai;
@@ -63,9 +62,9 @@ contract Conduit {
     address public withdrawal;
 
     // Centrifuge pool
-    ERC7540Like pool;
-    PoolManagerLike poolManager;
-    bytes32 claimRecipient;
+    ERC7540Like public pool;
+    PoolManagerLike public poolManager;
+    bytes32 public depositRecipient;
 
     mapping(address => uint256) public wards;
     mapping(address => uint256) public can;
@@ -172,8 +171,8 @@ contract Conduit {
     }
 
     function file(bytes32 what, bytes32 data) external onlyOperator {
-        if (what == "claimRecipient") {
-            claimRecipient = data;
+        if (what == "depositRecipient") {
+            depositRecipient = data;
         } else {
             revert("AndromedaPaymentConduit/unrecognised-param");
         }
@@ -184,7 +183,7 @@ contract Conduit {
     /// -- Invest --
     /// @notice Submit investment request for LTF tokens
     function requestDeposit() public onlyMate {
-        // Get USDC from outputConduit
+        // Get gem from outputConduit
         outputConduit.pick(address(this));
         outputConduit.hook(psm);
         outputConduit.push();
@@ -192,8 +191,9 @@ contract Conduit {
         // Mint deposit tokens
         uint256 amount = gem.balanceOf(address(this));
         depositAsset.mint(address(this), amount);
-        depositAsset.approve(address(pool), amount);
+
         // Deposit in pool
+        depositAsset.approve(address(pool), amount);
         pool.requestDeposit(amount, address(this), address(this), "");
     }
 
@@ -210,7 +210,6 @@ contract Conduit {
         uint256 amount = depositAsset.balanceOf(address(this));
         depositAsset.burn(address(this), amount);
 
-        claimDeposit();
         gem.transferFrom(address(this), withdrawal, amount);
     }
 
@@ -223,17 +222,19 @@ contract Conduit {
 
     /// @notice Lock deposit tokens in pool
     function depositIntoPool() public onlyMate {
+        require(depositRecipient != "", "AndromedaPaymentConduit/deposit-recipient-is-zero");
+
         uint256 amount = gem.balanceOf(address(this));
         depositAsset.mint(address(this), amount);
-        poolManager.transfer(address(depositAsset), claimRecipient, _toUint128(amount));
+        poolManager.transfer(address(depositAsset), depositRecipient, _toUint128(amount));
     }
 
     /// @notice Claim and burn redeemed deposit tokens
     function claimRedeem() public onlyMate {
-        uint256 claimable = pool.maxRedeem(address(this));
-        pool.redeem(claimable, address(this), address(this));
+        uint256 claimableShares = pool.maxRedeem(address(this));
+        uint256 redeemedAssets = pool.redeem(claimableShares, address(this), address(this));
 
-        depositAsset.burn(address(this), claimable);
+        depositAsset.burn(address(this), redeemedAssets);
     }
 
     /// @notice Send gem as interest to jar
@@ -260,7 +261,7 @@ contract Conduit {
     /// -- Helpers --
     function _toUint128(uint256 _value) internal pure returns (uint128 value) {
         if (_value > type(uint128).max) {
-            revert("MathLib/uint128-overflow");
+            revert("AndromedaPaymentConduit/uint128-overflow");
         } else {
             value = uint128(_value);
         }
