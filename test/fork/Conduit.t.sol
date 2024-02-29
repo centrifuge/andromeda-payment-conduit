@@ -194,14 +194,11 @@ contract ForkTest is Test {
         depositIntoPool(amount);
         redeem(amount);
 
-        // urn get debt
-        // jar get interest
-
         vm.startPrank(MATE);
-        console.log(ERC20Like(USDC).balanceOf(address(conduit)));
         conduit.repayToUrn((amount / 10 ** 12) / 2); // repay debt
-        conduit.repayToUrn((amount / 10 ** 12) / 2); // repay interest
+        conduit.repayToJar((amount / 10 ** 12) / 2); // repay interest
         vm.stopPrank();
+        // Todo: check Maker numbers 
     }
 
     // function testEmergencyRepayMaker() public {
