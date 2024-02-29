@@ -8,6 +8,7 @@ interface ERC20Like {
     function balanceOf(address user) external returns (uint256 amount);
     function mint(address user, uint256 amount) external;
     function burn(address user, uint256 amount) external;
+    function totalSupply() external returns (uint);
 }
 
 interface OutputConduitLike {
@@ -69,6 +70,8 @@ contract Conduit {
     mapping(address => uint256) public wards;
     mapping(address => uint256) public can;
     mapping(address => uint256) public may;
+
+    bool unlockActive = false; // unlocks all gem in case of bridge failure
 
     /// -- Events --
     event Rely(address indexed usr);
@@ -149,6 +152,14 @@ contract Conduit {
         emit Hate(usr);
     }
 
+    function unlock() external auth {
+      unlockActive = true;
+    }
+
+    function lock() external auth {
+      unlockActive = false;
+    }
+
     function file(bytes32 what, address data) external auth {
         if (what == "withdrawal") {
             withdrawal = data;
@@ -189,7 +200,8 @@ contract Conduit {
         outputConduit.push();
 
         // Mint deposit tokens
-        uint256 amount = gem.balanceOf(address(this));
+        uint256 amount = unlockedGem(); // only gem that is not used as collateral for already deposited depositAssets
+            // can be used to deposit
         depositAsset.mint(address(this), amount);
 
         // Deposit in pool
@@ -209,14 +221,15 @@ contract Conduit {
 
         uint256 amount = depositAsset.balanceOf(address(this));
         depositAsset.burn(address(this), amount);
-
-        gem.transferFrom(address(this), withdrawal, amount);
+        gem.transfer(withdrawal, amount); // use transfer here: transferFrom not working for USDC
     }
 
     /// -- On-ramp and Repay --
     /// @notice Submit redemption request for LTF tokens
     function requestRedeem(uint256 amount) public onlyMate {
-        claimDeposit();
+        // claim tranchetokens from previously fulfilled orders, in case they haven't been claimed yet
+        try pool.deposit(pool.maxDeposit(address(this)), address(this)) {} catch {} // can not call contract function
+
         pool.requestRedeem(amount, address(this), address(this), "");
     }
 
@@ -224,8 +237,9 @@ contract Conduit {
     function depositIntoPool() public onlyMate {
         require(depositRecipient != "", "AndromedaPaymentConduit/deposit-recipient-is-zero");
 
-        uint256 amount = gem.balanceOf(address(this));
+        uint256 amount = unlockedGem();
         depositAsset.mint(address(this), amount);
+        depositAsset.approve(address(poolManager), amount);
         poolManager.transfer(address(depositAsset), depositRecipient, _toUint128(amount));
     }
 
@@ -239,14 +253,21 @@ contract Conduit {
 
     /// @notice Send gem as interest to jar
     function repayToJar(uint256 amount) public onlyMate {
+        require(amount <= unlockedGem() || unlockActive);
         gem.transfer(address(jarConduit), amount);
         jarConduit.push();
     }
 
     /// @notice Send gem as principal to urn
     function repayToUrn(uint256 amount) public onlyMate {
+        require(amount <= unlockedGem() || unlockActive);
         gem.transfer(address(urnConduit), amount);
         urnConduit.push();
+    }
+
+    /// @notice Unlocked gem = gem that is not used as collateral for depositAssets
+    function unlockedGem() public returns (uint256) {
+        return gem.balanceOf(address(this)) - depositAsset.totalSupply();
     }
 
     /// -- Fail-safes --
