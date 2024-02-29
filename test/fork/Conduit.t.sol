@@ -198,7 +198,7 @@ contract ForkTest is Test {
         conduit.repayToUrn((amount / 10 ** 12) / 2); // repay debt
         conduit.repayToJar((amount / 10 ** 12) / 2); // repay interest
         vm.stopPrank();
-        // Todo: check Maker numbers 
+        // Todo: check Maker numbers
     }
 
     // function testEmergencyRepayMaker() public {
