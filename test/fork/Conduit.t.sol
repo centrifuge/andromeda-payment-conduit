@@ -149,14 +149,14 @@ contract ForkTest is Test {
     }
 
     function testDeposit(uint128 amount) public {
-        // amountAssumptions(amount); // fix later
+        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
         drawGemFromVault(amount);
         deposit();
     }
 
     function testWithdrawFromPool(uint128 amount) public {
-        // amountAssumptions(amount); // fix later
+        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
         drawGemFromVault(amount);
         deposit();
@@ -164,7 +164,7 @@ contract ForkTest is Test {
     }
 
     function testDepositIntoPool(uint128 amount) public {
-        // amountAssumptions(amount); // fix later
+        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
         drawGemFromVault(amount);
         deposit();
@@ -173,7 +173,7 @@ contract ForkTest is Test {
     }
 
     function testRedeem(uint128 amount) public {
-        // amountAssumptions(amount); // fix later
+        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
         drawGemFromVault(amount);
         deposit();
@@ -183,7 +183,7 @@ contract ForkTest is Test {
     }
 
     function testRepayMaker(uint128 amount) public {
-        // amountAssumptions(amount); // fix later
+        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
         // assert amount smaller debt
         // assert interest payment smaller debt
