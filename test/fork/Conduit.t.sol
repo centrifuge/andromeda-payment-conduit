@@ -17,10 +17,20 @@ interface PoolManagerLike {
     function isAllowedAsInvestmentCurrency(uint64 poolId, address currency) external returns (bool);
     function deployLiquidityPool(uint64 poolId, bytes16 trancheId, address currency) external returns (address);
     function updateMember(uint64 poolId, bytes16 trancheId, address user, uint64 validUntil) external;
+    function handleTransfer(uint128 currency, address recipient, uint128 amount) external;
 }
 
 interface InvestmentManagerLike {
     function handleExecutedCollectInvest(
+        uint64 poolId,
+        bytes16 trancheId,
+        address user,
+        uint128 currencyId,
+        uint128 currencyPayout,
+        uint128 trancheTokenPayout,
+        uint128 remainingInvestOrder
+    ) external;
+    function handleExecutedCollectRedeem(
         uint64 poolId,
         bytes16 trancheId,
         address user,
@@ -47,6 +57,7 @@ interface ERC20Like {
     function balanceOf(address user) external returns (uint256 amount);
     function mint(address user, uint256 amount) external;
     function burn(address user, uint256 amount) external;
+    function totalSupply() external returns (uint256);
 }
 
 interface UrnLike {
@@ -88,7 +99,11 @@ contract ForkTest is Test {
     address asset;
     address liquidityPool;
 
+    address self;
+
     function setUp() public virtual {
+        self = address(this);
+
         string memory rpcUrl = "https://mainnet.infura.io/v3/28b9df37a970456197cdb6b73af4e6de";
         uint256 forkId = vm.createFork(rpcUrl);
         vm.selectFork(forkId);
@@ -127,22 +142,136 @@ contract ForkTest is Test {
         // wire conduit with LP contracts
         vm.prank(OPERATOR);
         conduit.file("pool", liquidityPool, address(poolManager));
+        // set ANDROMEDA addresses
+        conduit.file("withdrawal", address(this)); // use deployer as withdrawel address for testing
+        vm.prank(OPERATOR);
+        conduit.file("depositRecipient", "DepositRecipient"); // use random String for testing
     }
 
-    function testFullDeposit() public {
-        uint256 drawAmount = 50000000000000000000000000;
+    function testDeposit(uint128 amount) public {
+        // amountAssumptions(amount); // fix later
+        amount = 50000000000000000000000000;
+        drawGemFromVault(amount);
+        deposit();
+    }
+
+    function testWithdrawFromPool(uint128 amount) public {
+        // amountAssumptions(amount); // fix later
+        amount = 50000000000000000000000000;
+        drawGemFromVault(amount);
+        deposit();
+        withdrawFromPool(amount);
+    }
+
+    function testDepositIntoPool(uint128 amount) public {
+        // amountAssumptions(amount); // fix later
+        amount = 50000000000000000000000000;
+        drawGemFromVault(amount);
+        deposit();
+        withdrawFromPool(amount);
+        depositIntoPool(amount);
+    }
+
+    function testRedeem(uint128 amount) public {
+        // amountAssumptions(amount); // fix later
+        amount = 50000000000000000000000000;
+        drawGemFromVault(amount);
+        deposit();
+        withdrawFromPool(amount);
+        depositIntoPool(amount);
+        redeem(amount);
+    }
+
+    function testRepayMaker(uint128 amount) public {
+        // amountAssumptions(amount); // fix later
+        amount = 50000000000000000000000000;
+        // assert amount smaller debt
+        // assert interest payment smaller debt
+
+        drawGemFromVault(amount);
+        deposit();
+        withdrawFromPool(amount);
+        depositIntoPool(amount);
+        redeem(amount);
+
+        // urn get debt
+        // jar get interest
+
+        vm.startPrank(MATE);
+        console.log(ERC20Like(USDC).balanceOf(address(conduit)));
+        conduit.repayToUrn((amount / 10 ** 12) / 2); // repay debt
+        conduit.repayToUrn((amount / 10 ** 12) / 2); // repay interest
+        vm.stopPrank();
+    }
+
+    // function testEmergencyRepayMaker) public {
+    // }
+
+    // draw from vault
+    function drawGemFromVault(uint128 amount) internal {
         uint256 outputConduitBalanceBeforeDrawDAI = ERC20Like(DAI).balanceOf(address(OUTPUT_CONDUIT));
+        vm.prank(MATE); // call as Ankura
+        UrnLike(RWA_URN).draw(amount); // draw DAI from vault in case output_conduit has no DAI
+        assertEq(ERC20Like(DAI).balanceOf(address(OUTPUT_CONDUIT)), amount + outputConduitBalanceBeforeDrawDAI);
+    }
+
+    function withdrawFromPool(uint128 amount) internal {
+        uint256 escrowBalanceBeforeWithdrawRequestASSET = ERC20Like(asset).balanceOf(escrow);
+        // execute depositAsset transfer from Centrifuge chain
+        handleIncomingTransfer(amount / 10 ** 12);
+        assertEq(
+            ERC20Like(asset).balanceOf(address(escrow)),
+            escrowBalanceBeforeWithdrawRequestASSET - amount / 10 ** 12 // normalize decimals
+        );
+        // withdraw GEM from pool
+        uint256 conduitBalanceBeforeWithdrawRequestUSDC = ERC20Like(USDC).balanceOf(address(conduit));
+        uint256 withdrawalWalletBalanceBeforeWithdrawRequestUSDC =
+            ERC20Like(USDC).balanceOf(address(conduit.withdrawal()));
+
+        vm.prank(MATE);
+        conduit.withdrawFromPool();
+
+        assertEq(
+            ERC20Like(USDC).balanceOf(address(escrow)),
+            conduitBalanceBeforeWithdrawRequestUSDC - amount / 10 ** 12 // normalize decimals
+        );
+        assertEq(
+            ERC20Like(USDC).balanceOf(conduit.withdrawal()),
+            withdrawalWalletBalanceBeforeWithdrawRequestUSDC + amount / 10 ** 12 // normalize decimals
+        );
+    }
+
+    function depositIntoPool(uint128 amount) internal {
+        uint256 conduitBalanceBeforeDepositRequestUSDC = ERC20Like(USDC).balanceOf(address(conduit));
+        uint256 externalBalanceBeforeDepositRequestUSDC = ERC20Like(USDC).balanceOf(self);
+        uint256 escrowBalanceBeforeDepositRequestASSET = ERC20Like(asset).balanceOf(escrow);
+
+        ERC20Like(USDC).transfer(address(conduit), amount / 10 ** 12);
+        vm.prank(MATE);
+        conduit.depositIntoPool();
+
+        assertEq(
+            ERC20Like(USDC).balanceOf(address(conduit)),
+            conduitBalanceBeforeDepositRequestUSDC + amount / 10 ** 12 // normalize decimals
+        );
+        assertEq(
+            ERC20Like(USDC).balanceOf(self),
+            externalBalanceBeforeDepositRequestUSDC - amount / 10 ** 12 // normalize decimals
+        );
+        assertEq(
+            ERC20Like(asset).balanceOf(address(escrow)),
+            escrowBalanceBeforeDepositRequestASSET + amount / 10 ** 12 // normalize decimals
+        );
+    }
+
+    function deposit() internal {
         uint256 conduitBalanceBeforeDepositRequestUSDC = ERC20Like(USDC).balanceOf(address(conduit));
         uint256 conduitBalanceBeforeDepositRequestTrancheToken = ERC20Like(trancheToken).balanceOf(address(conduit));
         uint256 escrowBalanceBeforeDepositRequestASSET = ERC20Like(asset).balanceOf(escrow);
-
-        vm.startPrank(MATE); // call as Ankura
-        UrnLike(RWA_URN).draw(drawAmount); // draw DAI from vault in case output_conduit has no DAI
-        assertEq(ERC20Like(DAI).balanceOf(address(OUTPUT_CONDUIT)), drawAmount + outputConduitBalanceBeforeDrawDAI);
-        // requestDeposit
         uint256 depositAmount = ERC20Like(DAI).balanceOf(address(OUTPUT_CONDUIT));
+
+        vm.prank(MATE); // call as Ankura
         conduit.requestDeposit();
-        vm.stopPrank();
 
         assertEq(ERC20Like(DAI).balanceOf(address(OUTPUT_CONDUIT)), 0);
         assertEq(
@@ -153,30 +282,33 @@ contract ForkTest is Test {
             ERC20Like(asset).balanceOf(address(escrow)),
             escrowBalanceBeforeDepositRequestASSET + depositAmount / 10 ** 12 // normalize decimals
         );
-
         // execute epoch on Centrifuge chain and handle deposit
-        handleFullPoolDeposit(address(conduit), depositAmount);
-
+        handleDeposit(address(conduit), depositAmount);
         vm.prank(MATE);
         conduit.claimDeposit();
+
         assertEq(
             ERC20Like(trancheToken).balanceOf(address(conduit)),
             conduitBalanceBeforeDepositRequestTrancheToken + depositAmount
         );
     }
 
-    // function withdraw(uint256 amount) internal {
-    //     uint256 recepeintBalanceBeforeWithdrawalUSDC = ERC20Like(USDC).balanceOf(address(WITHDRAW_ADDRESS));
-    //     uint256 conduitBalanceBeforeWithdrawalUSDC = ERC20Like(USDC).balanceOf(address(conduit));
+    function redeem(uint128 amount) internal {
+        uint256 conduitBalanceBeforeRedeemRequestTrancheToken = ERC20Like(trancheToken).balanceOf(address(conduit));
+        uint256 escrowBalanceBeforeRedeemRequestASSET = ERC20Like(asset).balanceOf(escrow);
 
-    //     conduit.file("withdrawal", WITHDRAW_ADDRESS);
-    //     vm.prank(MATE);
-    //     conduit.withdrawFromPool();
+        vm.prank(MATE); // call as Ankura
+        conduit.requestRedeem(amount);
 
-    //     assertEq(ERC20Like(USDC).balanceOf(address(WITHDRAW_ADDRESS)), recepeintBalanceBeforeWithdrawalUSDC +
-    // amount);
-    //     assertEq(ERC20Like(USDC).balanceOf(address(conduit)), conduitBalanceBeforeWithdrawalUSDC - amount);
-    // }
+        handleRedeem(address(conduit), amount / 10 ** 12); // execute epoch on Centrifuge chain and handle redeem
+        vm.prank(MATE);
+        conduit.claimRedeem();
+
+        assertEq(
+            ERC20Like(trancheToken).balanceOf(address(conduit)), conduitBalanceBeforeRedeemRequestTrancheToken - amount
+        );
+        assertEq(ERC20Like(asset).balanceOf(escrow), escrowBalanceBeforeRedeemRequestASSET - amount / 10 ** 12);
+    }
 
     // helpers
     function addCurrency(address currency) internal {
@@ -195,10 +327,32 @@ contract ForkTest is Test {
         poolManager.updateMember(poolId, trancheId, user, uint64(block.timestamp + 1000000));
     }
 
-    function handleFullPoolDeposit(address investor, uint256 depositAmount) internal {
+    function handleDeposit(address investor, uint256 depositAmount) internal {
         vm.prank(gateway);
         investmentManager.handleExecutedCollectInvest(
             poolId, trancheId, investor, currencyId, uint128(depositAmount), uint128(depositAmount), 0
         );
+    }
+
+    function handleRedeem(address investor, uint256 redeemAmount) internal {
+        vm.prank(gateway);
+        investmentManager.handleExecutedCollectRedeem(
+            poolId, trancheId, investor, currencyId, uint128(redeemAmount), uint128(redeemAmount), 0
+        );
+    }
+
+    function handleIncomingTransfer(uint256 amount) internal {
+        vm.prank(gateway);
+        poolManager.handleTransfer(currencyId, address(conduit), uint128(amount));
+    }
+
+    // general assertions
+    function usdcCollateralAssertions() internal {
+        // assertEq(restrictionManager.values_address("transfer_from"), from);
+    }
+
+    function amountAssumptions(uint256 amount) internal {
+        vm.assume(amount >= 10000000000000000000000000 && amount <= 50000000000000000000000000); // Todo: anable
+            // fuzzing, bit tricky because of vault constraints regarding ceiling
     }
 }
