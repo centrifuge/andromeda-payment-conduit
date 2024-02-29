@@ -253,20 +253,23 @@ contract Conduit {
 
     /// @notice Send gem as interest to jar
     function repayToJar(uint256 amount) public onlyMate {
-        require(amount <= unlockedGem() || unlockActive);
+        require(amount <= unlockedGem() || unlockActive, "AndromedaPaymentConduit/not-unlocked-gem-left");
         gem.transfer(address(jarConduit), amount);
         jarConduit.push();
     }
 
     /// @notice Send gem as principal to urn
     function repayToUrn(uint256 amount) public onlyMate {
-        require(amount <= unlockedGem() || unlockActive);
+        require(amount <= unlockedGem() || unlockActive, "AndromedaPaymentConduit/not-unlocked-gem-left");
         gem.transfer(address(urnConduit), amount);
         urnConduit.push();
     }
 
     /// @notice Unlocked gem = gem that is not used as collateral for depositAssets
     function unlockedGem() public returns (uint256) {
+        if (depositAsset.totalSupply() >= gem.balanceOf(address(this))) {
+            return 0;
+        }
         return gem.balanceOf(address(this)) - depositAsset.totalSupply();
     }
 
