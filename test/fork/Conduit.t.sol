@@ -344,12 +344,8 @@ contract ForkTest is Test {
     }
 
     // general assertions
-    function usdcCollateralAssertions() internal {
-        // assertEq(restrictionManager.values_address("transfer_from"), from);
-    }
-
     function amountAssumptions(uint256 amount) internal {
-        vm.assume(amount >= 10000000000000000000000000 && amount <= 50000000000000000000000000); // Todo: anable
+        vm.assume(amount >= 1); // Todo: anable
             // fuzzing, bit tricky because of vault constraints regarding ceiling
     }
 }
