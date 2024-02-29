@@ -8,7 +8,7 @@ interface ERC20Like {
     function balanceOf(address user) external returns (uint256 amount);
     function mint(address user, uint256 amount) external;
     function burn(address user, uint256 amount) external;
-    function totalSupply() external returns (uint);
+    function totalSupply() external returns (uint256);
 }
 
 interface OutputConduitLike {
@@ -153,11 +153,11 @@ contract Conduit {
     }
 
     function unlock() external auth {
-      unlockActive = true;
+        unlockActive = true;
     }
 
     function lock() external auth {
-      unlockActive = false;
+        unlockActive = false;
     }
 
     function file(bytes32 what, address data) external auth {
