@@ -255,9 +255,10 @@ contract ForkTest is Test {
 
     function withdrawFromPool(uint128 amount) internal {
         uint256 escrowBalanceBeforeWithdrawRequestASSET = ERC20Like(asset).balanceOf(escrow);
-        uint256 unlockedGem = ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply();
+        uint256 unlockedGem = conduit.unlockedGem();
         // execute depositAsset transfer from Centrifuge chain
         handleIncomingTransfer(amount / 10 ** 12);
+
         assertEq(
             ERC20Like(asset).balanceOf(address(escrow)),
             escrowBalanceBeforeWithdrawRequestASSET - amount / 10 ** 12 // normalize decimals
@@ -266,7 +267,7 @@ contract ForkTest is Test {
             ERC20Like(asset).balanceOf(address(conduit)),
             amount / 10 ** 12 // normalize decimals
         );
-        assertEq(ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply(), unlockedGem); // unlocked
+        assertEq(conduit.unlockedGem(), unlockedGem); // unlocked
             // GEM did not change, as the depositAsset is only burned on withdrawal
 
         // withdraw GEM from pool
@@ -293,7 +294,7 @@ contract ForkTest is Test {
         uint256 escrowBalanceBeforeDepositRequestASSET = ERC20Like(asset).balanceOf(escrow);
 
         ERC20Like(USDC).transfer(address(conduit), amount / 10 ** 12);
-        assertEq(ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply(), amount / 10 ** 12); // unlocked
+        assertEq(conduit.unlockedGem(), amount / 10 ** 12); // unlocked
             // GEM in conduit
         vm.prank(MATE);
         conduit.depositIntoPool();
@@ -311,7 +312,7 @@ contract ForkTest is Test {
             escrowBalanceBeforeDepositRequestASSET + amount / 10 ** 12 // normalize decimals
         );
         // assert all USDC locked up as collateral for depositAssets
-        assertEq(ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply(), 0);
+        assertEq(conduit.unlockedGem(), 0);
     }
 
     function deposit() internal {
@@ -341,14 +342,14 @@ contract ForkTest is Test {
             conduitBalanceBeforeDepositRequestTrancheToken + depositAmount
         );
         // assert all USDC locked up as collateral for depositAssets
-        assertEq(ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply(), 0);
+        assertEq(conduit.unlockedGem(), 0);
     }
 
     function redeem(uint128 amount) internal {
         uint256 conduitBalanceBeforeRedeemRequestTrancheToken = ERC20Like(trancheToken).balanceOf(address(conduit));
         uint256 escrowBalanceBeforeRedeemRequestASSET = ERC20Like(asset).balanceOf(escrow);
         uint256 totalSupplyBeforeRedeemRequestASSET = ERC20Like(asset).totalSupply();
-        uint256 unlockedGem = ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply();
+        uint256 unlockedGem = conduit.unlockedGem();
 
         vm.prank(MATE); // call as Ankura
         conduit.requestRedeem(amount);
@@ -363,7 +364,7 @@ contract ForkTest is Test {
         assertEq(ERC20Like(asset).balanceOf(escrow), escrowBalanceBeforeRedeemRequestASSET - amount / 10 ** 12);
         assertEq(ERC20Like(asset).totalSupply(), totalSupplyBeforeRedeemRequestASSET - amount / 10 ** 12);
         assertEq(
-            ERC20Like(USDC).balanceOf((address(conduit))) - ERC20Like(asset).totalSupply(),
+            conduit.unlockedGem(),
             unlockedGem + amount / 10 ** 12
         ); // make sure value of unlcoked GEM increased in conduit
     }
