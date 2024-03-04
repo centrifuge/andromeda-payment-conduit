@@ -335,7 +335,7 @@ contract ConduitTest is Test {
         assertEq(depositAsset.balanceOf(address(conduit)), amount);
     }
 
-    function testAuthLockUnlock(address notMate, uint256 amount) public {
+    function testAuthLockUnlock(address notMate) public {
         vm.assume(mate != notMate);
         assert(conduit.unlockActive() == false);
 
