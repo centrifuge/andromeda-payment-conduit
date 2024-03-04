@@ -363,10 +363,8 @@ contract ForkTest is Test {
         );
         assertEq(ERC20Like(asset).balanceOf(escrow), escrowBalanceBeforeRedeemRequestASSET - amount / 10 ** 12);
         assertEq(ERC20Like(asset).totalSupply(), totalSupplyBeforeRedeemRequestASSET - amount / 10 ** 12);
-        assertEq(
-            conduit.unlockedGem(),
-            unlockedGem + amount / 10 ** 12
-        ); // make sure value of unlcoked GEM increased in conduit
+        assertEq(conduit.unlockedGem(), unlockedGem + amount / 10 ** 12); // make sure value of unlcoked GEM increased
+            // in conduit
     }
 
     // helpers
