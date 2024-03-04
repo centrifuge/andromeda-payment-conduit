@@ -4,9 +4,9 @@ pragma solidity 0.8.21;
 import "forge-std/Test.sol";
 import {MockInputConduit} from "test/mocks/MockInputConduit.sol";
 import {MockOutputConduit} from "test/mocks/MockOutputConduit.sol";
-import {MockLiquidityPool} from "test/mocks/MockLiquidityPool.sol";
-import {MockBrokenLiquidityPool} from "test/mocks/MockBrokenLiquidityPool.sol";
-import {MockPoolManager} from "test/mocks/MockPoolManager.sol";
+import {MockCentrifugePool} from "test/mocks/MockCentrifugePool.sol";
+import {MockBrokenCentrifugePool} from "test/mocks/MockBrokenCentrifugePool.sol";
+import {MockCentrifugePoolManager} from "test/mocks/MockCentrifugePoolManager.sol";
 import {Conduit} from "src/Conduit.sol";
 import {ERC20} from "src/token/ERC20.sol";
 
@@ -28,8 +28,8 @@ contract ConduitTest is Test {
     address withdrawal = makeAddr("Withdrawal");
 
     bytes32 depositRecipient;
-    MockLiquidityPool pool;
-    MockPoolManager poolManager;
+    MockCentrifugePool pool;
+    MockCentrifugePoolManager poolManager;
 
     address mate = makeAddr("Mate");
     Conduit conduit;
@@ -51,8 +51,8 @@ contract ConduitTest is Test {
 
         conduit.mate(mate);
 
-        pool = new MockLiquidityPool();
-        poolManager = new MockPoolManager();
+        pool = new MockCentrifugePool();
+        poolManager = new MockCentrifugePoolManager();
         depositRecipient = "DepositRecipient";
         vm.prank(operator);
         conduit.file("pool", address(pool), address(poolManager));
@@ -290,14 +290,14 @@ contract ConduitTest is Test {
         // todo
     }
 
-    function testRepayBrokenLiquidityPool(uint256 jarRepayAmount, uint256 urnRepayAmount) public {
+    function testRepayBrokenPool(uint256 jarRepayAmount, uint256 urnRepayAmount) public {
         jarRepayAmount = bound(jarRepayAmount, 0, type(uint128).max);
         urnRepayAmount = bound(urnRepayAmount, 0, type(uint128).max);
 
         conduit.file("withdrawal", withdrawal);
 
-        // Liquidity Pool is broken (always reverting)
-        MockBrokenLiquidityPool brokenPool = new MockBrokenLiquidityPool();
+        // Ccentrifuge Pool is broken (always reverting)
+        MockBrokenCentrifugePool brokenPool = new MockBrokenCentrifugePool();
         vm.prank(operator);
         conduit.file("pool", address(brokenPool), address(poolManager));
 

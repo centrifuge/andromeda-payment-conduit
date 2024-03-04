@@ -4,7 +4,7 @@ pragma solidity 0.8.21;
 import "forge-std/Test.sol";
 import "./Mock.sol";
 
-contract MockLiquidityPool is Mock {
+contract MockCentrifugePool is Mock {
     constructor() {}
 
     function requestDeposit(uint256 assets, address receiver, address owner, bytes memory data)

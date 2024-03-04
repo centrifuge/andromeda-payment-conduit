@@ -85,7 +85,7 @@ contract ForkTest is Test {
     address constant MATE = 0x23a10f09Fac6CCDbfb6d9f0215C795F9591D7476; // MATE = ANKURA
     address constant WITHDRAW_ADDRESS = 0x65729807485F6f7695AF863d97D62140B7d69d83; // WITHDRAW ADDRESS
 
-    // LIQUITY POOL
+    // CENTRIFUGE POOL
     address root = 0x498016d30Cd5f0db50d7ACE329C07313a0420502;
     address gateway = 0x634F036fE66579E901c7bA34e33DF422E37A0037;
     address escrow = 0xd595E1483c507E74E2E6A3dE8e7D08d8f6F74936;
@@ -96,7 +96,7 @@ contract ForkTest is Test {
     address trancheToken = 0x30baA3BA9D7089fD8D020a994Db75D14CF7eC83b; // Anemoy tranche token
     uint128 currencyId = 999; // pick random id to add currency
     address asset;
-    address liquidityPool;
+    address pool;
 
     address self;
 
@@ -115,8 +115,8 @@ contract ForkTest is Test {
         asset = address(new ERC20("LPUSDC", "LPUSDC", 6));
         // add depositAsset to pool currencies (use existing Anemoy pool for testing)
         addCurrency(asset);
-        // deploy liquidityPool for depositAsset
-        liquidityPool = poolManager.deployLiquidityPool(poolId, trancheId, asset);
+        // deploy pool for depositAsset
+        pool = poolManager.deployLiquidityPool(poolId, trancheId, asset);
         // deploy and wire conduit
         conduit = new Conduit(PSM, DAI, USDC, asset, OUTPUT_CONDUIT, URN_CONDUIT, JAR_CONDUIT);
         // allow conduit to receive LP tokens
@@ -140,7 +140,7 @@ contract ForkTest is Test {
         vm.stopPrank();
         // wire conduit with LP contracts
         vm.prank(OPERATOR);
-        conduit.file("pool", liquidityPool, address(poolManager));
+        conduit.file("pool", pool, address(poolManager));
         // set ANDROMEDA addresses
         conduit.file("withdrawal", address(this)); // use deployer as withdrawel address for testing
         vm.prank(OPERATOR);
