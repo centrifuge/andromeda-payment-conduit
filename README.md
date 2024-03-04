@@ -24,4 +24,4 @@ The adapter has been designed that if the Centrifuge pool stops operating correc
 ![Emergency](./assets/fail-safes.png)
 
 ## License
-This codebase is licensed under [GNU Lesser General Public License v3.0](https://github.com/centrifuge/liquidity-pools/blob/main/LICENSE).
+This codebase is licensed under [GNU Lesser General Public License v3.0](https://github.com/centrifuge/andromeda-payment-conduit/blob/main/LICENSE).
