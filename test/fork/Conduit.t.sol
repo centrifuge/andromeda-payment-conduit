@@ -68,8 +68,7 @@ contract ForkTest is Test {
     Conduit public conduit;
 
     // MAKER
-    address constant RWA_URN = 0xebFDaa143827FD0fc9C6637c3604B75Bbcfb7284; // ward on Maker contracts
-    address constant URN = 0xebFDaa143827FD0fc9C6637c3604B75Bbcfb7284;
+    address constant URN = 0xebFDaa143827FD0fc9C6637c3604B75Bbcfb7284; // ward on Maker contracts
     address constant JAR = 0xc27C3D3130563C1171feCC4F76C217Db603997cf;
     address constant OUTPUT_CONDUIT = 0x1E86CB085f249772f7e7443631a87c6BDba2aCEb;
     address constant URN_CONDUIT = 0x4f7f76f31CE6Bb20809aaCE30EfD75217Fbfc217;
@@ -149,22 +148,43 @@ contract ForkTest is Test {
     }
 
     function testDeposit(uint128 amount) public {
-        // amountAssumptions(amount); // fix: enable fuzzing
+        // bound(amount, 2000000000000000000, 50000000000000000000000000);
         amount = 50000000000000000000000000;
         drawGemFromVault(amount);
         deposit();
     }
 
     function testWithdrawFromPool(uint128 amount) public {
-        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
         drawGemFromVault(amount);
         deposit();
         withdrawFromPool(amount);
     }
 
+    function testEmergencyWithdrawFromPool(uint128 amount) public {
+        amount = 50000000000000000000000000;
+        drawGemFromVault(amount);
+        deposit();
+        uint256 withdrawalWalletBalanceBeforeWithdrawRequestUSDC =
+            ERC20Like(USDC).balanceOf(address(conduit.withdrawal()));
+        // do not transfer depositAssets from Centrifuge chain => conduit does not have depositAssets to butn for
+        // withdrawal
+
+        vm.startPrank(MATE);
+        vm.expectRevert("AndromedaPaymentConduit/nothing-to-withdraw"); // withdrawal should fail
+        conduit.withdrawFromPool();
+        // mint depositAssets to conduit for emergency withdrawal
+        conduit.authMint(amount / 10 ** 12);
+        conduit.withdrawFromPool();
+        vm.stopPrank();
+
+        assertEq(
+            ERC20Like(USDC).balanceOf(conduit.withdrawal()),
+            withdrawalWalletBalanceBeforeWithdrawRequestUSDC + amount / 10 ** 12 // normalize decimals
+        );
+    }
+
     function testDepositIntoPool(uint128 amount) public {
-        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
         drawGemFromVault(amount);
         deposit();
@@ -173,7 +193,6 @@ contract ForkTest is Test {
     }
 
     function testRedeem(uint128 amount) public {
-        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
         drawGemFromVault(amount);
         deposit();
@@ -183,43 +202,73 @@ contract ForkTest is Test {
     }
 
     function testRepayMaker(uint128 amount) public {
-        // amountAssumptions(amount); // fix: enable fuzzing
         amount = 50000000000000000000000000;
-        // assert amount smaller debt
-        // assert interest payment smaller debt
-
         drawGemFromVault(amount);
         deposit();
         withdrawFromPool(amount);
         depositIntoPool(amount);
         redeem(amount);
-
-        vm.startPrank(MATE);
-        conduit.repayToUrn((amount / 10 ** 12) / 2); // repay debt
-        conduit.repayToJar((amount / 10 ** 12) / 2); // repay interest
-        vm.stopPrank();
-        // Todo: check Maker numbers
+        repayMaker(amount);
     }
 
-    // function testEmergencyRepayMaker() public {
-    // }
+    function testEmergencyRepayMaker(uint128 amount) public {
+        amount = 50000000000000000000000000;
+        uint256 repaymentAmount = (amount / 10 ** 12) / 2;
+        drawGemFromVault(amount);
+        deposit();
+        withdrawFromPool(amount);
+        depositIntoPool(amount);
+        // do not redeem => gem locked
+        vm.startPrank(MATE);
+        vm.expectRevert("AndromedaPaymentConduit/no-unlocked-gem-left");
+        conduit.repayToUrn(repaymentAmount);
+        vm.expectRevert("AndromedaPaymentConduit/no-unlocked-gem-left");
+        conduit.repayToJar(repaymentAmount);
+        conduit.unlock(); // unlock gem for emergency Maker repayment
+        vm.stopPrank();
+        repayMaker(amount);
+    }
 
-    // draw from vault
     function drawGemFromVault(uint128 amount) internal {
         uint256 outputConduitBalanceBeforeDrawDAI = ERC20Like(DAI).balanceOf(address(OUTPUT_CONDUIT));
         vm.prank(MATE); // call as Ankura
-        UrnLike(RWA_URN).draw(amount); // draw DAI from vault in case output_conduit has no DAI
+        UrnLike(URN).draw(amount); // draw DAI from vault in case output_conduit has no DAI
         assertEq(ERC20Like(DAI).balanceOf(address(OUTPUT_CONDUIT)), amount + outputConduitBalanceBeforeDrawDAI);
+    }
+
+    function repayMaker(uint128 amount) internal {
+        uint256 conduitBalanceBeforeRepaymentUSDC = ERC20Like(USDC).balanceOf(address(conduit));
+        uint256 urnConduitBalanceBeforeRepaymentUSDC = ERC20Like(USDC).balanceOf(URN_CONDUIT); // TODO : check why push
+            // is not triggered
+        uint256 jartBalanceBeforeRepaymentDAI = ERC20Like(DAI).balanceOf(JAR);
+        uint256 repaymentAmount = (amount / 10 ** 12) / 2;
+
+        vm.startPrank(MATE);
+        conduit.repayToUrn(repaymentAmount); // repay debt
+        conduit.repayToJar(repaymentAmount); // repay interest
+        vm.stopPrank();
+
+        assertEq(ERC20Like(USDC).balanceOf(address(conduit)), conduitBalanceBeforeRepaymentUSDC - 2 * repaymentAmount);
+        assertEq(ERC20Like(DAI).balanceOf(JAR), jartBalanceBeforeRepaymentDAI + repaymentAmount * 10 ** 12);
+        assertEq(ERC20Like(USDC).balanceOf(URN_CONDUIT), urnConduitBalanceBeforeRepaymentUSDC + repaymentAmount);
     }
 
     function withdrawFromPool(uint128 amount) internal {
         uint256 escrowBalanceBeforeWithdrawRequestASSET = ERC20Like(asset).balanceOf(escrow);
+        uint256 unlockedGem = ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply();
         // execute depositAsset transfer from Centrifuge chain
         handleIncomingTransfer(amount / 10 ** 12);
         assertEq(
             ERC20Like(asset).balanceOf(address(escrow)),
             escrowBalanceBeforeWithdrawRequestASSET - amount / 10 ** 12 // normalize decimals
         );
+        assertEq(
+            ERC20Like(asset).balanceOf(address(conduit)),
+            amount / 10 ** 12 // normalize decimals
+        );
+        assertEq(ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply(), unlockedGem); // unlocked
+            // GEM did not change, as the depositAsset is only burned on withdrawal
+
         // withdraw GEM from pool
         uint256 conduitBalanceBeforeWithdrawRequestUSDC = ERC20Like(USDC).balanceOf(address(conduit));
         uint256 withdrawalWalletBalanceBeforeWithdrawRequestUSDC =
@@ -244,6 +293,8 @@ contract ForkTest is Test {
         uint256 escrowBalanceBeforeDepositRequestASSET = ERC20Like(asset).balanceOf(escrow);
 
         ERC20Like(USDC).transfer(address(conduit), amount / 10 ** 12);
+        assertEq(ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply(), amount / 10 ** 12); // unlocked
+            // GEM in conduit
         vm.prank(MATE);
         conduit.depositIntoPool();
 
@@ -259,6 +310,8 @@ contract ForkTest is Test {
             ERC20Like(asset).balanceOf(address(escrow)),
             escrowBalanceBeforeDepositRequestASSET + amount / 10 ** 12 // normalize decimals
         );
+        // assert all USDC locked up as collateral for depositAssets
+        assertEq(ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply(), 0);
     }
 
     function deposit() internal {
@@ -283,16 +336,19 @@ contract ForkTest is Test {
         handleDeposit(address(conduit), depositAmount);
         vm.prank(MATE);
         conduit.claimDeposit();
-
         assertEq(
             ERC20Like(trancheToken).balanceOf(address(conduit)),
             conduitBalanceBeforeDepositRequestTrancheToken + depositAmount
         );
+        // assert all USDC locked up as collateral for depositAssets
+        assertEq(ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply(), 0);
     }
 
     function redeem(uint128 amount) internal {
         uint256 conduitBalanceBeforeRedeemRequestTrancheToken = ERC20Like(trancheToken).balanceOf(address(conduit));
         uint256 escrowBalanceBeforeRedeemRequestASSET = ERC20Like(asset).balanceOf(escrow);
+        uint256 totalSupplyBeforeRedeemRequestASSET = ERC20Like(asset).totalSupply();
+        uint256 unlockedGem = ERC20Like(USDC).balanceOf(address(conduit)) - ERC20Like(asset).totalSupply();
 
         vm.prank(MATE); // call as Ankura
         conduit.requestRedeem(amount);
@@ -305,6 +361,11 @@ contract ForkTest is Test {
             ERC20Like(trancheToken).balanceOf(address(conduit)), conduitBalanceBeforeRedeemRequestTrancheToken - amount
         );
         assertEq(ERC20Like(asset).balanceOf(escrow), escrowBalanceBeforeRedeemRequestASSET - amount / 10 ** 12);
+        assertEq(ERC20Like(asset).totalSupply(), totalSupplyBeforeRedeemRequestASSET - amount / 10 ** 12);
+        assertEq(
+            ERC20Like(USDC).balanceOf((address(conduit))) - ERC20Like(asset).totalSupply(),
+            unlockedGem + amount / 10 ** 12
+        ); // make sure value of unlcoked GEM increased in conduit
     }
 
     // helpers
@@ -341,11 +402,5 @@ contract ForkTest is Test {
     function handleIncomingTransfer(uint256 amount) internal {
         vm.prank(gateway);
         poolManager.handleTransfer(currencyId, address(conduit), uint128(amount));
-    }
-
-    // general assertions
-    function amountAssumptions(uint256 amount) internal {
-        vm.assume(amount >= 1); // Todo: anable
-            // fuzzing, bit tricky because of vault constraints regarding ceiling
     }
 }

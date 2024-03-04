@@ -158,6 +158,7 @@ contract ConduitTest is Test {
 
     function testWithdrawFromPool(address notMate, uint256 gemAmount) public {
         vm.assume(mate != notMate);
+        vm.assume(gemAmount > 0);
 
         outputConduit.setPush(gemAmount);
         pool.setReturn("maxDeposit", gemAmount);
@@ -189,6 +190,7 @@ contract ConduitTest is Test {
 
     function testRequestRedeem(address notMate, uint256 gemAmount) public {
         vm.assume(mate != notMate);
+        vm.assume(gemAmount > 0);
 
         outputConduit.setPush(gemAmount);
         pool.setReturn("maxDeposit", gemAmount);
@@ -331,6 +333,29 @@ contract ConduitTest is Test {
         conduit.authMint(amount);
 
         assertEq(depositAsset.balanceOf(address(conduit)), amount);
+    }
+
+    function testAuthLockUnlock(address notMate, uint256 amount) public {
+        vm.assume(mate != notMate);
+        assert(conduit.unlockActive() == false);
+
+        vm.expectRevert(bytes("AndromedaPaymentConduit/not-mate"));
+        vm.prank(notMate);
+        conduit.unlock();
+        assert(conduit.unlockActive() == false);
+
+        vm.prank(mate);
+        conduit.unlock();
+        assert(conduit.unlockActive() == true);
+
+        vm.expectRevert(bytes("AndromedaPaymentConduit/not-mate"));
+        vm.prank(notMate);
+        conduit.lock();
+        assert(conduit.unlockActive() == true);
+
+        vm.prank(mate);
+        conduit.lock();
+        assert(conduit.unlockActive() == false);
     }
 
     function testAuthBurn(address notMate, uint256 mintAmount, uint256 burnAmount) public {

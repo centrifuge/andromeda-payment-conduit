@@ -71,7 +71,7 @@ contract Conduit {
     mapping(address => uint256) public can;
     mapping(address => uint256) public may;
 
-    bool unlockActive = false; // unlocks all gem in case of bridge failure
+    bool public unlockActive = false; // unlocks gem for mkr repayment
 
     /// -- Events --
     event Rely(address indexed usr);
@@ -152,14 +152,6 @@ contract Conduit {
         emit Hate(usr);
     }
 
-    function unlock() external auth {
-        unlockActive = true;
-    }
-
-    function lock() external auth {
-        unlockActive = false;
-    }
-
     function file(bytes32 what, address data) external auth {
         if (what == "withdrawal") {
             withdrawal = data;
@@ -218,6 +210,7 @@ contract Conduit {
     /// @notice Burn deposit tokens and withdraw gem
     function withdrawFromPool() public onlyMate {
         require(withdrawal != address(0), "AndromedaPaymentConduit/withdrawal-is-zero");
+        require(depositAsset.balanceOf(address(this)) > 0, "AndromedaPaymentConduit/nothing-to-withdraw");
 
         uint256 amount = depositAsset.balanceOf(address(this));
         depositAsset.burn(address(this), amount);
@@ -253,14 +246,14 @@ contract Conduit {
 
     /// @notice Send gem as interest to jar
     function repayToJar(uint256 amount) public onlyMate {
-        require(amount <= unlockedGem() || unlockActive, "AndromedaPaymentConduit/not-unlocked-gem-left");
+        require(amount <= unlockedGem() || unlockActive, "AndromedaPaymentConduit/no-unlocked-gem-left");
         gem.transfer(address(jarConduit), amount);
         jarConduit.push();
     }
 
     /// @notice Send gem as principal to urn
     function repayToUrn(uint256 amount) public onlyMate {
-        require(amount <= unlockedGem() || unlockActive, "AndromedaPaymentConduit/not-unlocked-gem-left");
+        require(amount <= unlockedGem() || unlockActive, "AndromedaPaymentConduit/no-unlocked-gem-left");
         gem.transfer(address(urnConduit), amount);
         urnConduit.push();
     }
@@ -280,6 +273,14 @@ contract Conduit {
 
     function authBurn(uint256 amount) public onlyMate {
         depositAsset.burn(address(this), amount);
+    }
+
+    function unlock() public onlyMate {
+        unlockActive = true;
+    }
+
+    function lock() public onlyMate {
+        unlockActive = false;
     }
 
     /// -- Helpers --
