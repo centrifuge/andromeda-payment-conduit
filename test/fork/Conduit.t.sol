@@ -62,19 +62,41 @@ interface ERC20Like {
 
 interface UrnLike {
     function draw(uint256 amount) external;
+    function wipe(uint256 amount) external;
+    function gemJoin() external view returns (address);
+}
+
+interface JarLike {
+    function void() external;
+}
+
+interface JugLike {
+    function ilks(bytes32) external view returns (uint256, uint256);
+    function drip(bytes32 ilk) external returns (uint256 rate);
+    function base() external view returns (uint256);
+}
+
+interface VatLike {
+    function urns(bytes32, address) external view returns (uint256, uint256);
+    function ilks(bytes32) external view returns (uint256, uint256, uint256, uint256, uint256);
+}
+
+interface GemJoinLike {
+    function ilk() external view returns (bytes32);
 }
 
 contract ForkTest is Test {
     Conduit public conduit;
 
     // MAKER
-    address constant URN = 0xebFDaa143827FD0fc9C6637c3604B75Bbcfb7284; // ward on Maker contracts
+    address constant VAT = 0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B;
+    address constant JUG = 0x19c0976f590D67707E62397C87829d896Dc0f1F1;
+    address constant URN = 0xebFDaa143827FD0fc9C6637c3604B75Bbcfb7284;
     address constant JAR = 0xc27C3D3130563C1171feCC4F76C217Db603997cf;
     address constant OUTPUT_CONDUIT = 0x1E86CB085f249772f7e7443631a87c6BDba2aCEb;
-    address constant URN_CONDUIT = 0x4f7f76f31CE6Bb20809aaCE30EfD75217Fbfc217;
+    address constant URN_CONDUIT = 0xe08cb5E24862eA86328295D5E5c08972203C20D8;
     address constant JAR_CONDUIT = 0xB9373C557f3aE8cDdD068c1644ED226CfB18A997;
     address constant WARD = 0xBE8E3e3618f7474F8cB1d074A26afFef007E98FB; // ward on Maker contracts
-
     address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; // GEM
     address constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     // NOT WORKING WITH THAT PSM -> address constant PSM = 0x204659B2Fd2aD5723975c362Ce2230Fba11d3900;
@@ -99,6 +121,7 @@ contract ForkTest is Test {
     address pool;
 
     address self;
+    uint256 constant ONE = 1000000000000000000000000000;
 
     function setUp() public virtual {
         self = address(this);
@@ -237,10 +260,12 @@ contract ForkTest is Test {
     }
 
     function repayMaker(uint128 amount) internal {
+        uint256 debtBeforeRepayment = makerDebt();
         uint256 conduitBalanceBeforeRepaymentUSDC = ERC20Like(USDC).balanceOf(address(conduit));
-        uint256 urnConduitBalanceBeforeRepaymentUSDC = ERC20Like(USDC).balanceOf(URN_CONDUIT); // TODO : check why push
-            // is not triggered
-        uint256 jartBalanceBeforeRepaymentDAI = ERC20Like(DAI).balanceOf(JAR);
+
+        // is not triggered
+        uint256 jarBalanceBeforeRepaymentDAI = ERC20Like(DAI).balanceOf(JAR);
+        uint256 urnBalanceBeforeRepaymentDAI = ERC20Like(DAI).balanceOf(URN);
         uint256 repaymentAmount = (amount / 10 ** 12) / 2;
 
         vm.startPrank(MATE);
@@ -249,8 +274,17 @@ contract ForkTest is Test {
         vm.stopPrank();
 
         assertEq(ERC20Like(USDC).balanceOf(address(conduit)), conduitBalanceBeforeRepaymentUSDC - 2 * repaymentAmount);
-        assertEq(ERC20Like(DAI).balanceOf(JAR), jartBalanceBeforeRepaymentDAI + repaymentAmount * 10 ** 12);
-        assertEq(ERC20Like(USDC).balanceOf(URN_CONDUIT), urnConduitBalanceBeforeRepaymentUSDC + repaymentAmount);
+        assertEq(ERC20Like(DAI).balanceOf(URN), urnBalanceBeforeRepaymentDAI + repaymentAmount * 10 ** 12);
+        // move DAI Maker Vault - wipe debt
+        UrnLike(URN).wipe(repaymentAmount * 10 ** 12);
+        assertEq(ERC20Like(DAI).balanceOf(URN), urnBalanceBeforeRepaymentDAI);
+        assertEq(makerDebt(), debtBeforeRepayment - repaymentAmount * 10 ** 39); // 12 + 27 (normalize to 12 decimals
+            // DAI and 27 for precision)
+
+        assertEq(ERC20Like(DAI).balanceOf(JAR), jarBalanceBeforeRepaymentDAI + repaymentAmount * 10 ** 12);
+        // move DAI to suprlus buffer
+        JarLike(JAR).void();
+        assertEq(ERC20Like(DAI).balanceOf(JAR), 0);
     }
 
     function withdrawFromPool(uint128 amount) internal {
@@ -368,6 +402,30 @@ contract ForkTest is Test {
     }
 
     // helpers
+    function makerDebt() internal returns (uint256) {
+        bytes32 ilk = ilk();
+        // get debt index
+        (, uint256 art) = VatLike(VAT).urns(ilk, URN);
+
+        // get accumulated interest rate index
+        (, uint256 rateIdx,,,) = VatLike(VAT).ilks(ilk);
+
+        // get interest rate per second and last interest rate update timestamp
+        (uint256 duty, uint256 rho) = JugLike(JUG).ilks(ilk);
+
+        // interest accumulation up to date
+        if (block.timestamp == rho) {
+            return art * rateIdx;
+        }
+
+        return rmul(art, rmul(rpow(JugLike(JUG).base() + duty, block.timestamp - rho, ONE), rateIdx));
+        // calculate current debt (see jug.drip function in MakerDAO
+    }
+
+    function ilk() public view returns (bytes32 ilk_) {
+        return GemJoinLike(UrnLike(URN).gemJoin()).ilk();
+    }
+
     function addCurrency(address currency) internal {
         vm.assume(poolManager.currencyIdToAddress(currencyId) == address(0));
 
@@ -401,5 +459,45 @@ contract ForkTest is Test {
     function handleIncomingTransfer(uint256 amount) internal {
         vm.prank(gateway);
         poolManager.handleTransfer(currencyId, address(conduit), uint128(amount));
+    }
+
+    // Math helpers
+    function rmul(uint256 x, uint256 y) public pure returns (uint256 z) {
+        z = safeMul(x, y) / ONE;
+    }
+
+    function safeMul(uint256 x, uint256 y) public pure returns (uint256 z) {
+        require(y == 0 || (z = x * y) / y == x, "safe-mul-failed");
+    }
+
+    function rpow(uint256 x, uint256 n, uint256 base) public pure returns (uint256 z) {
+        assembly {
+            switch x
+            case 0 {
+                switch n
+                case 0 { z := base }
+                default { z := 0 }
+            }
+            default {
+                switch mod(n, 2)
+                case 0 { z := base }
+                default { z := x }
+                let half := div(base, 2) // for rounding.
+                for { n := div(n, 2) } n { n := div(n, 2) } {
+                    let xx := mul(x, x)
+                    if iszero(eq(div(xx, x), x)) { revert(0, 0) }
+                    let xxRound := add(xx, half)
+                    if lt(xxRound, xx) { revert(0, 0) }
+                    x := div(xxRound, base)
+                    if mod(n, 2) {
+                        let zx := mul(z, x)
+                        if and(iszero(iszero(x)), iszero(eq(div(zx, x), z))) { revert(0, 0) }
+                        let zxRound := add(zx, half)
+                        if lt(zxRound, zx) { revert(0, 0) }
+                        z := div(zxRound, base)
+                    }
+                }
+            }
+        }
     }
 }
